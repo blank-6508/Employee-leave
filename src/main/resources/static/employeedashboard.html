@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee Dashboard</title>
+</head>
+
+<body>
+
+    <h1>Employee Dashboard</h1>
+
+    <h3 id="welcome"></h3>
+
+    <hr>
+
+    <h2>Leave Balance</h2>
+
+    <table border="1" id="balanceTable">
+        <tr>
+            <th>Leave Type</th>
+            <th>Available Days</th>
+        </tr>
+    </table>
+
+    <br>
+
+    <h2>Apply for Leave</h2>
+
+    <form id="leaveForm">
+
+        <label for="leaveTypeId">Leave Type:</label>
+
+        <select id="leaveTypeId" required>
+            <option value="">Select Leave Type</option>
+        </select>
+
+        <br><br>
+
+        <label for="startDate">Start Date:</label>
+        <input type="date" id="startDate" required>
+
+        <br><br>
+
+        <label for="endDate">End Date:</label>
+        <input type="date" id="endDate" required>
+
+        <br><br>
+
+        <label for="reason">Reason:</label>
+        <br>
+
+        <textarea id="reason" rows="4" cols="40" required></textarea>
+
+        <br><br>
+
+        <button type="submit">Apply Leave</button>
+
+    </form>
+
+    <p id="leaveMessage"></p>
+
+    <hr>
+
+    <h2>Leave History</h2>
+
+    <table border="1" id="requestTable">
+        <tr>
+            <th>Leave Type</th>
+            <th>Start Date</th>
+            <th>End Date</th>
+            <th>Reason</th>
+            <th>Status</th>
+            <th>Manager Comment</th>
+        </tr>
+    </table>
+
+    <br>
+
+    <button type="button" onclick="logout()">Logout</button>
+
+    <script>
+
+        // GET EMPLOYEE DETAILS
+
+        const urlParams = new URLSearchParams(window.location.search);
+
+        const employeeId = urlParams.get("employeeId");
+        const employeeName = urlParams.get("employeeName");
+
+        if (!employeeId || employeeId === "null") {
+            window.location.href = "login.html";
+        }
+
+        document.getElementById("welcome").innerText =
+            "Welcome, " + (employeeName || "Employee");
+
+        localStorage.setItem("employeeId", employeeId);
+        localStorage.setItem("employeeName", employeeName || "Employee");
+
+        // STORE LEAVE TYPES
+
+        let leaveTypes = [];
+
+        // LOAD DASHBOARD
+
+        async function loadDashboard() {
+            try {
+                await loadLeaveTypes();
+                await loadBalance();
+                await loadRequests();
+            } catch (error) {
+                console.error("Dashboard loading error:", error);
+                document.getElementById("leaveMessage").innerText =
+                    "Unable to load dashboard data. Please refresh the page.";
+            }
+        }
+
+        // LOAD LEAVE TYPES
+
+        async function loadLeaveTypes() {
+            const response = await fetch("/api/leave/types");
+
+            if (!response.ok) {
+                throw new Error("Unable to load leave types");
+            }
+
+            leaveTypes = await response.json();
+
+            const select = document.getElementById("leaveTypeId");
+
+            select.innerHTML =
+                '<option value="">Select Leave Type</option>';
+
+            leaveTypes.forEach(type => {
+                const option = document.createElement("option");
+                option.value = type.id;
+                option.textContent = type.name;
+                select.appendChild(option);
+            });
+        }
+
+        // GET LEAVE TYPE NAME
+
+        function getLeaveTypeName(leaveTypeId) {
+            const type = leaveTypes.find(
+                item => Number(item.id) === Number(leaveTypeId)
+            );
+
+            return type ? type.name : "Unknown Leave Type";
+        }
+
+        // LOAD LEAVE BALANCE
+
+        async function loadBalance() {
+            const response = await fetch(
+                "/api/leave/balance/" + encodeURIComponent(employeeId)
+            );
+
+            if (!response.ok) {
+                throw new Error("Unable to load leave balance");
+            }
+
+            const data = await response.json();
+            const table = document.getElementById("balanceTable");
+
+            while (table.rows.length > 1) {
+                table.deleteRow(1);
+            }
+
+            if (data.length === 0) {
+                const row = table.insertRow();
+                const cell = row.insertCell(0);
+                cell.colSpan = 2;
+                cell.innerText = "No leave balance found";
+                return;
+            }
+
+            data.forEach(balance => {
+                const row = table.insertRow();
+
+                row.insertCell(0).innerText =
+                    getLeaveTypeName(balance.leaveTypeId);
+
+                row.insertCell(1).innerText =
+                    balance.availableDays ?? 0;
+            });
+        }
+
+        // LOAD LEAVE HISTORY
+
+        async function loadRequests() {
+            const response = await fetch(
+                "/api/leave/requests/" + encodeURIComponent(employeeId)
+            );
+
+            if (!response.ok) {
+                throw new Error("Unable to load leave requests");
+            }
+
+            const data = await response.json();
+            const table = document.getElementById("requestTable");
+
+            while (table.rows.length > 1) {
+                table.deleteRow(1);
+            }
+
+            if (data.length === 0) {
+                const row = table.insertRow();
+                const cell = row.insertCell(0);
+                cell.colSpan = 6;
+                cell.innerText = "No leave history found";
+                return;
+            }
+
+            data.forEach(request => {
+                const row = table.insertRow();
+
+                row.insertCell(0).innerText =
+                    getLeaveTypeName(request.leaveTypeId);
+
+                row.insertCell(1).innerText =
+                    request.startDate ?? "";
+
+                row.insertCell(2).innerText =
+                    request.endDate ?? "";
+
+                row.insertCell(3).innerText =
+                    request.reason ?? "";
+
+                row.insertCell(4).innerText =
+                    request.status ?? "";
+
+                row.insertCell(5).innerText =
+                    request.managerComment ?? "";
+            });
+        }
+
+        // APPLY FOR LEAVE
+
+        document.getElementById("leaveForm").addEventListener(
+            "submit",
+            async function(event) {
+                event.preventDefault();
+
+                const leaveTypeId =
+                    document.getElementById("leaveTypeId").value;
+
+                const startDate =
+                    document.getElementById("startDate").value;
+
+                const endDate =
+                    document.getElementById("endDate").value;
+
+                const reason =
+                    document.getElementById("reason").value.trim();
+
+                const messageElement =
+                    document.getElementById("leaveMessage");
+
+                if (!leaveTypeId) {
+                    messageElement.innerText =
+                        "Please select a leave type.";
+                    return;
+                }
+
+                if (endDate < startDate) {
+                    messageElement.innerText =
+                        "End date cannot be before start date.";
+                    return;
+                }
+
+                const request = {
+                    employeeId: Number(employeeId),
+                    leaveTypeId: Number(leaveTypeId),
+                    startDate: startDate,
+                    endDate: endDate,
+                    reason: reason
+                };
+
+                try {
+                    const response = await fetch("/api/leave/apply", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(request)
+                    });
+
+                    const message = await response.text();
+
+                    messageElement.innerText = message;
+
+                    if (response.ok &&
+                        message.trim() === "Leave applied successfully") {
+
+                        document.getElementById("leaveForm").reset();
+
+                        await loadBalance();
+                        await loadRequests();
+                    }
+
+                } catch (error) {
+                    console.error("Leave application error:", error);
+
+                    messageElement.innerText =
+                        "Error applying for leave. Please try again.";
+                }
+            }
+        );
+
+        // LOGOUT
+
+        function logout() {
+            localStorage.removeItem("employeeId");
+            localStorage.removeItem("employeeName");
+            window.location.href = "login.html";
+        }
+
+        // START DASHBOARD
+
+        loadDashboard();
+
+    </script>
+
+</body>
+</html>
